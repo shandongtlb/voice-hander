@@ -46,6 +46,25 @@ Send a text request:
 .\scripts\chat.ps1 -Message "Say hello. If you need tools, ask first."
 ```
 
+Send an audio file through ASR, chat, and optional TTS:
+
+```powershell
+.\scripts\voice.ps1 -AudioPath .\data\sample.wav
+```
+
+The `/v1/voice` flow is:
+
+```text
+audio file -> ASR /transcribe -> transcript text -> /v1/chat agent loop -> TTS /synthesize
+```
+
+For local ASR/TTS development without real models, start mock services in two extra terminals:
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn scripts.mock_asr:app --host 127.0.0.1 --port 8101
+.\.venv\Scripts\python.exe -m uvicorn scripts.mock_tts:app --host 127.0.0.1 --port 8102
+```
+
 Windows PowerShell 5.1 can mangle Chinese text when JSON strings are sent without an explicit UTF-8 body. Use `scripts/chat.ps1`, PowerShell 7, or send UTF-8 bytes manually.
 
 ## Service Boundaries
