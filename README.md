@@ -24,6 +24,14 @@ After the first setup, start it with:
 .\start.ps1
 ```
 
+Start the Vue voice UI in another terminal:
+
+```powershell
+.\start-frontend.ps1
+```
+
+Open `http://127.0.0.1:5173`, allow microphone access, then use the record button. The browser sends short audio chunks to `/v1/transcribe`; the recognized text is accumulated in the draft box and can be sent to `/v1/chat`.
+
 Useful options:
 
 ```powershell

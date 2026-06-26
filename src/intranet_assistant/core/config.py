@@ -11,6 +11,7 @@ import yaml
 class ServerSettings:
     host: str = "127.0.0.1"
     port: int = 18080
+    cors_origins: list[str] = field(default_factory=lambda: ["http://127.0.0.1:5173", "http://localhost:5173"])
 
 
 @dataclass(frozen=True)

@@ -12,7 +12,7 @@ class HttpTtsClient:
 
     async def synthesize(self, text: str) -> bytes:
         payload = {"text": text, "voice": self.settings.voice}
-        async with httpx.AsyncClient(timeout=self.settings.timeout_seconds) as client:
+        async with httpx.AsyncClient(timeout=self.settings.timeout_seconds, trust_env=False) as client:
             response = await client.post(f"{self.base_url}/synthesize", json=payload)
             response.raise_for_status()
             return response.content

@@ -25,3 +25,7 @@ class VoiceResponse(BaseModel):
     transcript: str
     reply: str
     audio_base64: str | None = None
+
+
+class TranscribeResponse(BaseModel):
+    transcript: str
