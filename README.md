@@ -90,6 +90,11 @@ voice gateway
 
 The current scaffold keeps these pieces in one repository, but each boundary can become a separate service later.
 
+## Technical Docs
+
+- [Technical rules](docs/TECHNICAL_RULES.md)
+- [TODO interfaces](docs/TODO_INTERFACES.md)
+
 ## Current Features
 
 - OpenAI-compatible chat completions client for Ollama or another local gateway.
