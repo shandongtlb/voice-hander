@@ -1,0 +1,39 @@
+[project]
+name = "intranet-voice-assistant"
+version = "0.1.0"
+description = "Offline-first intranet voice assistant scaffold with local model adapters and Windows tools."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115.0",
+  "pydantic>=2.7.0",
+  "uvicorn[standard]>=0.30.0",
+  "httpx>=0.27.0",
+  "PyYAML>=6.0.0",
+  "pillow>=10.0.0",
+]
+
+[project.optional-dependencies]
+windows = [
+  "pywinauto>=0.6.8",
+  "pyautogui>=0.9.54",
+  "mss>=9.0.0",
+  "rapidocr-onnxruntime>=1.3.0",
+]
+dev = [
+  "pytest>=8.0.0",
+]
+
+[project.scripts]
+intranet-assistant = "intranet_assistant.cli:main"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
