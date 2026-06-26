@@ -15,8 +15,30 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e .[windows]
 Copy-Item config.example.yaml config.yaml
-uvicorn intranet_assistant.api.app:create_app --factory --host 127.0.0.1 --port 18080
+.\start.ps1
 ```
+
+After the first setup, start it with:
+
+```powershell
+.\start.ps1
+```
+
+Useful options:
+
+```powershell
+.\start.ps1 -Port 18081
+.\start.ps1 -Config config.yaml -Reload
+.\start.ps1 -Install
+```
+
+The Python entry point is also available:
+
+```powershell
+intranet-assistant serve --config config.yaml
+```
+
+For OCR on Windows, use Python 3.11 or 3.12 so `rapidocr-onnxruntime` can be installed. Python 3.14 can run the desktop automation, screenshot, keyboard/mouse, and OpenCV tools, but the current OCR package does not publish compatible wheels yet.
 
 Send a text request:
 

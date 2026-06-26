@@ -4,9 +4,9 @@ server:
 
 llm:
   provider: openai_compatible
-  base_url: https://yukiapi.com/v1
-  api_key: sk-yjGTbgQI0XEyLebF2pZTpPSwGhiSTMxnR1dOrxQk4067UKZN
-  model: gpt-5.5
+  base_url: http://127.0.0.1:11434/v1
+  api_key: ollama
+  model: qwen2.5:14b
   timeout_seconds: 120
   temperature: 0.2
   max_tool_rounds: 4
