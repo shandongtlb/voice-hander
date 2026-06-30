@@ -30,7 +30,13 @@ Start the Vue voice UI in another terminal:
 .\start-frontend.ps1
 ```
 
-Open `http://127.0.0.1:5173`, allow microphone access, then use the record button. The browser sends short audio chunks to `/v1/transcribe`; the recognized text is accumulated in the draft box and can be sent to `/v1/chat`.
+Open `http://127.0.0.1:5173`, allow microphone access, then use the record button. The browser sends 16 kHz PCM audio directly to a FunASR realtime WebSocket service; the recognized text is accumulated in the draft box and can be sent to `/v1/chat`.
+
+The default realtime ASR URL in the UI is:
+
+```text
+ws://127.0.0.1:10095
+```
 
 Useful options:
 
@@ -72,6 +78,31 @@ For local ASR/TTS development without real models, start mock services in two ex
 .\.venv\Scripts\python.exe -m uvicorn scripts.mock_asr:app --host 127.0.0.1 --port 8101
 .\.venv\Scripts\python.exe -m uvicorn scripts.mock_tts:app --host 127.0.0.1 --port 8102
 ```
+
+## Realtime FunASR
+
+The voice UI does not need the project ASR gateway for realtime transcription. It talks directly to the official FunASR WebSocket protocol:
+
+```text
+browser mic -> FunASR WebSocket -> transcript draft -> /v1/chat
+```
+
+Run the official Fun-ASR-Nano realtime service in WSL/Linux where vLLM is available:
+
+```bash
+git clone https://github.com/modelscope/FunASR.git
+cd FunASR/examples/industrial_data_pretraining/fun_asr_nano
+
+python3 -m venv .venv
+source .venv/bin/activate
+
+pip install -r requirements.txt
+pip install vllm
+
+python serve_realtime_ws.py --port 10095 --device cuda:0 --dtype fp16 --gpu-memory-utilization 0.75
+```
+
+Then keep the frontend FunASR realtime URL as `ws://127.0.0.1:10095`. The UI sends `START`, optional `LANGUAGE:<value>` and `HOTWORDS:<value>`, then PCM16 audio bytes, and finally `STOP`.
 
 Windows PowerShell 5.1 can mangle Chinese text when JSON strings are sent without an explicit UTF-8 body. Use `scripts/chat.ps1`, PowerShell 7, or send UTF-8 bytes manually.
 

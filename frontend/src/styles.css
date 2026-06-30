@@ -82,6 +82,8 @@ h2 {
 .record-meta span,
 .message-meta,
 .segment span,
+.live-line span,
+.log-item span,
 .empty {
   color: #68756f;
   font-size: 13px;
@@ -188,6 +190,23 @@ h2 {
   font-size: 16px;
 }
 
+.level-meter {
+  width: 100%;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dce5e1;
+}
+
+.level-meter span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: #1e6f57;
+  transition: width 80ms linear;
+}
+
 .field,
 .switch-row {
   display: flex;
@@ -274,6 +293,69 @@ textarea:focus {
 .segment.error {
   border-color: #d79a94;
   background: #fff7f6;
+}
+
+.live-list,
+.asr-log {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.live-list {
+  overflow: auto;
+  min-height: 150px;
+  max-height: 280px;
+  padding-right: 2px;
+}
+
+.live-line,
+.log-item {
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #d7e0dd;
+  background: #ffffff;
+}
+
+.live-line p,
+.log-item p {
+  margin-top: 4px;
+  color: #26322d;
+  font-size: 14px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.live-partial {
+  border-color: #d5c07e;
+}
+
+.live-partial p {
+  color: #6a5a20;
+}
+
+.asr-log {
+  max-height: 132px;
+  overflow: auto;
+}
+
+.log-item {
+  padding: 8px 10px;
+}
+
+.log-item.pending {
+  border-color: #d5c07e;
+}
+
+.log-item.error {
+  border-color: #d79a94;
+  background: #fff7f6;
+}
+
+.hotword-box {
+  min-height: 72px;
+  resize: vertical;
 }
 
 .chat-panel {
