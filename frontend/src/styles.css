@@ -20,6 +20,7 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
@@ -222,6 +223,7 @@ h2 {
 }
 
 .field input,
+.field select,
 textarea {
   width: 100%;
   border: 1px solid #ccd8d4;
@@ -231,12 +233,14 @@ textarea {
   outline: none;
 }
 
-.field input {
+.field input,
+.field select {
   height: 38px;
   padding: 0 10px;
 }
 
 .field input:focus,
+.field select:focus,
 textarea:focus {
   border-color: #1e6f57;
   box-shadow: 0 0 0 3px rgba(30, 111, 87, 0.12);
@@ -458,6 +462,10 @@ textarea {
 .primary-button {
   color: #ffffff;
   background: #1e6f57;
+}
+
+.wide-button {
+  width: 100%;
 }
 
 .empty {

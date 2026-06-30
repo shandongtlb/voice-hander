@@ -1,0 +1,68 @@
+name: intranet-funasr
+
+services:
+  funasr-realtime:
+    build:
+      context: .
+      dockerfile: docker/funasr-realtime/Dockerfile
+      args:
+        VLLM_IMAGE: ${VLLM_IMAGE:-vllm/vllm-openai:latest}
+        HTTP_PROXY: ${FUNASR_HTTP_PROXY:-}
+        HTTPS_PROXY: ${FUNASR_HTTPS_PROXY:-}
+        ALL_PROXY: ${FUNASR_ALL_PROXY:-}
+        NO_PROXY: ${FUNASR_NO_PROXY:-127.0.0.1,localhost}
+    image: intranet-funasr-realtime:latest
+    ports:
+      - "10095:10095"
+    gpus: all
+    ipc: host
+    shm_size: "8gb"
+    environment:
+      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-0}
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
+      MODELSCOPE_CACHE: /models/modelscope
+      HF_HOME: /models/huggingface
+      HF_HUB_DISABLE_SYMLINKS_WARNING: "1"
+      HTTP_PROXY: ${FUNASR_HTTP_PROXY:-}
+      HTTPS_PROXY: ${FUNASR_HTTPS_PROXY:-}
+      ALL_PROXY: ${FUNASR_ALL_PROXY:-}
+      NO_PROXY: ${FUNASR_NO_PROXY:-127.0.0.1,localhost}
+    volumes:
+      - funasr-models:/models
+    command:
+      - python3
+      - /opt/FunASR/examples/industrial_data_pretraining/fun_asr_nano/serve_realtime_ws.py
+      - --port
+      - "10095"
+      - --hub
+      - ms
+      - --device
+      - cuda:0
+      - --dtype
+      - bf16
+      - --gpu-memory-utilization
+      - "0.65"
+      - --hotword-file
+      - ""
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - |
+          import asyncio
+          import websockets
+
+          async def main():
+              async with websockets.connect("ws://127.0.0.1:10095", open_timeout=2):
+                  pass
+
+          asyncio.run(main())
+      interval: 30s
+      timeout: 5s
+      retries: 20
+      start_period: 2m
+
+volumes:
+  funasr-models:

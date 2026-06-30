@@ -47,6 +47,11 @@ interface AsrLogItem {
   at: string
 }
 
+interface AudioInputDevice {
+  deviceId: string
+  label: string
+}
+
 declare global {
   interface Window {
     webkitAudioContext?: typeof AudioContext
@@ -54,8 +59,9 @@ declare global {
 }
 
 const apiBaseUrl = ref(localStorage.getItem('apiBaseUrl') || 'http://127.0.0.1:18080')
-const funasrUrl = ref(localStorage.getItem('funasrUrl') || 'ws://127.0.0.1:10095')
+const funasrUrl = ref(localStorage.getItem('funasrUrl') || 'ws://localhost:10095')
 const asrLanguage = ref(localStorage.getItem('asrLanguage') || '中文')
+const selectedAudioDeviceId = ref(localStorage.getItem('audioDeviceId') || '')
 const hotwords = ref(localStorage.getItem('hotwords') || '')
 const autoSend = ref(localStorage.getItem('autoSend') === 'true')
 const autoSendSilenceSeconds = ref(Number(localStorage.getItem('autoSendSilenceSeconds') || '2'))
@@ -71,10 +77,12 @@ const funasrConnected = ref(false)
 const sending = ref(false)
 const lastError = ref('')
 const inputLevel = ref(0)
+const inputPeak = ref(0)
 const audioBytesSent = ref(0)
 const liveSentences = ref<FunAsrSentence[]>([])
 const partialText = ref('')
 const partialStartMs = ref(0)
+const audioInputs = ref<AudioInputDevice[]>([])
 const asrLog = ref<AsrLogItem[]>([])
 const messages = ref<Message[]>([])
 const chatLog = ref<HTMLElement | null>(null)
@@ -84,10 +92,11 @@ let socket: WebSocket | null = null
 let audioContext: AudioContext | null = null
 let sourceNode: MediaStreamAudioSourceNode | null = null
 let processor: ScriptProcessorNode | null = null
-let muteGain: GainNode | null = null
 let silenceTimer = 0
 let socketCloseTimer = 0
 let stopping = false
+let startResolve: (() => void) | null = null
+let startReject: ((error: Error) => void) | null = null
 
 const canSend = computed(() => draft.value.trim().length > 0 && !sending.value)
 const silenceMs = computed(() => Math.max(1, autoSendSilenceSeconds.value) * 1000)
@@ -101,13 +110,14 @@ const recordHint = computed(() => {
     return 'FunASR 正在返回文字'
   }
   if (audioBytesSent.value > 0) {
-    return '正在发送麦克风音频'
+    return `发送 ${formatBytes(audioBytesSent.value)}，音量 ${inputLevel.value.toFixed(4)} / 峰值 ${inputPeak.value.toFixed(4)}`
   }
   return '等待麦克风输入'
 })
 
 onMounted(() => {
   void checkHealth()
+  void refreshAudioInputs()
 })
 
 onBeforeUnmount(() => {
@@ -143,6 +153,7 @@ async function startRecording() {
   stopping = false
   audioBytesSent.value = 0
   inputLevel.value = 0
+  inputPeak.value = 0
   liveSentences.value = []
   partialText.value = ''
   partialStartMs.value = 0
@@ -150,17 +161,20 @@ async function startRecording() {
   statusText.value = '连接 FunASR 实时服务...'
 
   try {
+    await openFunAsrSocket()
     stream = await navigator.mediaDevices.getUserMedia({
       audio: {
+        ...(selectedAudioDeviceId.value ? { deviceId: { exact: selectedAudioDeviceId.value } } : {}),
         channelCount: 1,
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
       },
     })
-    await openFunAsrSocket()
-    await setupPcmStreaming(stream)
+    await refreshAudioInputs()
+    logAudioTrack(stream)
     recording.value = true
+    await setupPcmStreaming(stream)
     statusText.value = '正在实时转写'
     addAsrLog('已开始发送 16k PCM 音频', 'pending')
   } catch (error) {
@@ -170,6 +184,50 @@ async function startRecording() {
     closeSocket()
     recording.value = false
     funasrConnected.value = false
+    statusText.value = online.value ? '后端已连接' : '后端未连接'
+  }
+}
+
+async function refreshAudioInputs() {
+  if (!navigator.mediaDevices?.enumerateDevices) {
+    return
+  }
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices()
+    audioInputs.value = devices
+      .filter((device) => device.kind === 'audioinput')
+      .map((device, index) => ({
+        deviceId: device.deviceId,
+        label: device.label || `麦克风 ${index + 1}`,
+      }))
+
+    if (selectedAudioDeviceId.value && !audioInputs.value.some((device) => device.deviceId === selectedAudioDeviceId.value)) {
+      selectedAudioDeviceId.value = ''
+      localStorage.removeItem('audioDeviceId')
+    }
+  } catch (error) {
+    addAsrLog(`读取麦克风列表失败：${errorMessage(error)}`, 'error')
+  }
+}
+
+async function testFunAsrConnection() {
+  if (recording.value || funasrConnected.value) {
+    return
+  }
+  lastError.value = ''
+  asrLog.value = []
+  statusText.value = '测试 FunASR 连接...'
+  try {
+    await openFunAsrSocket()
+    addAsrLog('FunASR 连接测试通过', 'done')
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send('STOP')
+    }
+  } catch (error) {
+    lastError.value = errorMessage(error)
+    addAsrLog(lastError.value, 'error')
+    closeSocket()
+  } finally {
     statusText.value = online.value ? '后端已连接' : '后端未连接'
   }
 }
@@ -209,6 +267,24 @@ function openFunAsrSocket() {
     }
 
     let opened = false
+    const timer = window.setTimeout(() => {
+      if (!opened) {
+        reject(new Error(`FunASR WebSocket 连接超时：${url}`))
+      } else {
+        reject(new Error('FunASR 会话启动超时'))
+      }
+      closeSocket()
+    }, 8000)
+
+    startResolve = () => {
+      window.clearTimeout(timer)
+      resolve()
+    }
+    startReject = (error: Error) => {
+      window.clearTimeout(timer)
+      reject(error)
+    }
+
     socket = new WebSocket(url)
     socket.binaryType = 'arraybuffer'
 
@@ -225,7 +301,6 @@ function openFunAsrSocket() {
         socket?.send(`HOTWORDS:${words}`)
       }
       addAsrLog('FunASR WebSocket 已连接', 'done')
-      resolve()
     }
 
     socket.onmessage = (event) => {
@@ -237,7 +312,7 @@ function openFunAsrSocket() {
       lastError.value = message
       addAsrLog(message, 'error')
       if (!opened) {
-        reject(new Error(message))
+        startReject?.(new Error(message))
       }
     }
 
@@ -258,10 +333,9 @@ async function setupPcmStreaming(mediaStream: MediaStream) {
     throw new Error('当前浏览器不支持 Web Audio')
   }
   audioContext = new AudioContextCtor({ sampleRate: 16000 })
+  addAsrLog(`音频上下文 ${audioContext.sampleRate} Hz`, 'done')
   sourceNode = audioContext.createMediaStreamSource(mediaStream)
   processor = audioContext.createScriptProcessor(4096, 1, 1)
-  muteGain = audioContext.createGain()
-  muteGain.gain.value = 0
 
   processor.onaudioprocess = (event) => {
     if (!recording.value || socket?.readyState !== WebSocket.OPEN || !audioContext) {
@@ -269,6 +343,10 @@ async function setupPcmStreaming(mediaStream: MediaStream) {
     }
     const input = event.inputBuffer.getChannelData(0)
     inputLevel.value = rms(input)
+    inputPeak.value = peak(input)
+    if (inputPeak.value > 0.02 && audioBytesSent.value < 8192) {
+      addAsrLog(`检测到麦克风输入：RMS ${inputLevel.value.toFixed(4)}，峰值 ${inputPeak.value.toFixed(4)}`, 'done')
+    }
     const samples = downsample(input, audioContext.sampleRate, 16000)
     const pcm = floatTo16BitPcm(samples)
     socket.send(pcm.buffer)
@@ -276,17 +354,14 @@ async function setupPcmStreaming(mediaStream: MediaStream) {
   }
 
   sourceNode.connect(processor)
-  processor.connect(muteGain)
-  muteGain.connect(audioContext.destination)
+  processor.connect(audioContext.destination)
 }
 
 function cleanupAudio() {
   processor?.disconnect()
   sourceNode?.disconnect()
-  muteGain?.disconnect()
   processor = null
   sourceNode = null
-  muteGain = null
   if (audioContext && audioContext.state !== 'closed') {
     void audioContext.close()
   }
@@ -294,10 +369,13 @@ function cleanupAudio() {
   stream?.getTracks().forEach((track) => track.stop())
   stream = null
   inputLevel.value = 0
+  inputPeak.value = 0
 }
 
 function closeSocket() {
   window.clearTimeout(socketCloseTimer)
+  startResolve = null
+  startReject = null
   if (socket && socket.readyState !== WebSocket.CLOSED) {
     socket.close()
   }
@@ -327,6 +405,9 @@ function handleFunAsrMessage(raw: unknown) {
   if (data.event) {
     if (data.event === 'started') {
       addAsrLog('FunASR 会话已启动', 'done')
+      startResolve?.()
+      startResolve = null
+      startReject = null
     } else if (data.event === 'stopped') {
       addAsrLog('FunASR 会话已停止', 'done')
       scheduleAutoSend()
@@ -344,6 +425,8 @@ function handleFunAsrMessage(raw: unknown) {
     if (text) {
       draft.value = text
       scheduleAutoSend()
+    } else if (data.is_final && audioBytesSent.value > 0) {
+      addAsrLog(`未识别到语音，已发送 ${formatBytes(audioBytesSent.value)}`, 'error')
     }
   }
 }
@@ -416,10 +499,22 @@ function saveSettings() {
   localStorage.setItem('apiBaseUrl', apiBaseUrl.value)
   localStorage.setItem('funasrUrl', funasrUrl.value)
   localStorage.setItem('asrLanguage', asrLanguage.value)
+  localStorage.setItem('audioDeviceId', selectedAudioDeviceId.value)
   localStorage.setItem('hotwords', hotwords.value)
   localStorage.setItem('autoSend', String(autoSend.value))
   localStorage.setItem('autoSendSilenceSeconds', String(autoSendSilenceSeconds.value))
   void checkHealth()
+}
+
+function logAudioTrack(mediaStream: MediaStream) {
+  const [track] = mediaStream.getAudioTracks()
+  if (!track) {
+    addAsrLog('没有拿到麦克风音轨', 'error')
+    return
+  }
+  const settings = track.getSettings()
+  addAsrLog(`麦克风：${track.label || '未命名输入'}`, 'done')
+  addAsrLog(`音轨状态：${track.readyState}${track.muted ? ' / muted' : ''}，${settings.sampleRate || '?'} Hz，${settings.channelCount || '?'} 声道`, track.muted ? 'error' : 'done')
 }
 
 function addAsrLog(text: string, status: AsrLogItem['status']) {
@@ -461,6 +556,16 @@ function normalizeHotwords(value: string) {
     .join(',')
 }
 
+function formatBytes(value: number) {
+  if (value < 1024) {
+    return `${value} B`
+  }
+  if (value < 1024 * 1024) {
+    return `${(value / 1024).toFixed(1)} KB`
+  }
+  return `${(value / 1024 / 1024).toFixed(1)} MB`
+}
+
 function rms(input: Float32Array) {
   if (!input.length) {
     return 0
@@ -470,6 +575,14 @@ function rms(input: Float32Array) {
     sum += sample * sample
   }
   return Math.sqrt(sum / input.length)
+}
+
+function peak(input: Float32Array) {
+  let max = 0
+  for (const sample of input) {
+    max = Math.max(max, Math.abs(sample))
+  }
+  return max
 }
 
 function downsample(input: Float32Array, inputRate: number, outputRate: number) {
@@ -498,8 +611,7 @@ function downsample(input: Float32Array, inputRate: number, outputRate: number) 
 function floatTo16BitPcm(input: Float32Array) {
   const output = new Int16Array(input.length)
   for (let i = 0; i < input.length; i += 1) {
-    const sample = Math.max(-1, Math.min(1, input[i]))
-    output[i] = sample < 0 ? sample * 0x8000 : sample * 0x7fff
+    output[i] = Math.max(-32768, Math.min(32767, Math.round(input[i] * 32768)))
   }
   return output
 }
@@ -575,6 +687,16 @@ async function scrollChat() {
           <input v-model="funasrUrl" type="text" @change="saveSettings" />
         </label>
 
+        <label class="field">
+          <span>麦克风</span>
+          <select v-model="selectedAudioDeviceId" @change="saveSettings">
+            <option value="">系统默认输入</option>
+            <option v-for="device in audioInputs" :key="device.deviceId" :value="device.deviceId">
+              {{ device.label }}
+            </option>
+          </select>
+        </label>
+
         <div class="field-grid">
           <label class="field">
             <span>识别语言</span>
@@ -601,6 +723,11 @@ async function scrollChat() {
           <input v-model="autoSend" type="checkbox" @change="saveSettings" />
           <span>停止转写后自动提交给 chat</span>
         </label>
+
+        <button class="secondary-button wide-button" type="button" :disabled="recording || funasrConnected" @click="testFunAsrConnection">
+          <Wifi :size="16" />
+          测试 FunASR 连接
+        </button>
 
         <div class="panel-heading compact">
           <h2>实时结果</h2>
